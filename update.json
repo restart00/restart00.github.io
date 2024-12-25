@@ -1,0 +1,16 @@
+{
+    "addons": {
+        "test@update-permissions": {
+            "updates": [
+                {
+                    "version": "0.0.1",
+                    "update_link": "https://restart00.github.io/update-permissions-0.0.1.xpi"
+                },
+                {
+                    "version": "0.0.2",
+                    "update_link": "https://restart00.github.io/update-permissions-0.0.2.xpi"
+                }
+            ]
+        }
+    }
+}
