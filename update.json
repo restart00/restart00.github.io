@@ -9,6 +9,10 @@
                 {
                     "version": "1.0.0",
                     "update_link": "https://restart00.github.io/facebook-video-controls-1.0.0-firefox.xpi"
+                },
+                {
+                    "version": "1.0.1",
+                    "update_link": "https://restart00.github.io/facebook-video-controls-1.0.1-firefox.xpi"
                 }
             ]
         }
