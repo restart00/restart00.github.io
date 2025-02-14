@@ -4,11 +4,11 @@
             "updates": [
                 {
                     "version": "0.0.1",
-                    "update_link": "https://restart00.github.io/update-permissions-0.0.1.xpi"
+                    "update_link": "https://restart00.github.io/wxt-starter-0.0.1-firefox.xpi"
                 },
                 {
                     "version": "0.0.2",
-                    "update_link": "https://restart00.github.io/update-permissions-0.0.2.xpi"
+                    "update_link": "https://restart00.github.io/wxt-starter-0.0.2-firefox.xpi"
                 }
             ]
         }
