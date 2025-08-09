@@ -460,7 +460,6 @@
             connectedAt: null
         };
         let uptimeInterval = null;
-        let completedPorts = 0;
 
         // Generate random extension ID
         function generateExtensionId() {
@@ -596,8 +595,6 @@
                     ws.close();
                     updatePortStatus(port, 'failed');
                     log(`Port ${port}: Connection timeout`, 'error');
-                    completedPorts++;
-                    updateScanProgress();
                     resolve(false);
                 }, 2000);
 
@@ -605,62 +602,51 @@
                     clearTimeout(timeout);
                     updatePortStatus(port, 'success');
                     log(`Port ${port}: Connection successful! ✅`, 'success');
-                    completedPorts++;
-                    updateScanProgress();
+                    currentSocket = ws;
+                    stats.connectedAt = new Date();
+                    startUptimeCounter();
                     
-                    // Only set as current socket if we don't already have one
-                    if (!currentSocket) {
-                        currentSocket = ws;
-                        stats.connectedAt = new Date();
-                        startUptimeCounter();
-                        
-                        // Set up message handlers for the successful connection
-                        ws.onmessage = (event) => {
-                            try {
-                                const data = JSON.parse(event.data);
-                                stats.messagesReceived++;
-                                updateStats();
-                                
-                                log(`Received: ${JSON.stringify(data)}`, 'received');
-                                addMessageToHistory('received', data.message || data.content || JSON.stringify(data));
-                                
-                                // Handle different message types
-                                if (data.type === 'screenshot' && data.fileData) {
-                                    log(`Received screenshot frame #${data.frameNumber}`, 'info');
-                                } else if (data.type === 'confirmation') {
-                                    log(`Message confirmed: ${data.message}`, 'success');
-                                } else if (data.type === 'connection') {
-                                    log(`Connection message: ${data.message}`, 'info');
-                                }
-                            } catch (error) {
-                                stats.messagesReceived++;
-                                updateStats();
-                                log(`Received raw: ${event.data}`, 'received');
-                                addMessageToHistory('received', event.data);
+                    // Set up message handlers for the successful connection
+                    ws.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            stats.messagesReceived++;
+                            updateStats();
+                            
+                            log(`Received: ${JSON.stringify(data)}`, 'received');
+                            addMessageToHistory('received', data.message || data.content || JSON.stringify(data));
+                            
+                            // Handle different message types
+                            if (data.type === 'screenshot' && data.fileData) {
+                                log(`Received screenshot frame #${data.frameNumber}`, 'info');
+                            } else if (data.type === 'confirmation') {
+                                log(`Message confirmed: ${data.message}`, 'success');
+                            } else if (data.type === 'connection') {
+                                log(`Connection message: ${data.message}`, 'info');
                             }
-                        };
-                        
-                        ws.onclose = () => {
-                            log(`Connection to port ${port} closed`, 'info');
-                            if (currentSocket === ws) {
-                                currentSocket = null;
-                                hideConnectionInfo();
-                                if (uptimeInterval) {
-                                    clearInterval(uptimeInterval);
-                                    uptimeInterval = null;
-                                }
+                        } catch (error) {
+                            stats.messagesReceived++;
+                            updateStats();
+                            log(`Received raw: ${event.data}`, 'received');
+                            addMessageToHistory('received', event.data);
+                        }
+                    };
+                    
+                    ws.onclose = () => {
+                        log(`Connection to port ${port} closed`, 'info');
+                        if (currentSocket === ws) {
+                            currentSocket = null;
+                            hideConnectionInfo();
+                            if (uptimeInterval) {
+                                clearInterval(uptimeInterval);
+                                uptimeInterval = null;
                             }
-                        };
-                        
-                        ws.onerror = (error) => {
-                            log(`WebSocket error on port ${port}: ${error}`, 'error');
-                        };
-                    } else {
-                        // We already have a connection, so close this one
-                        ws.close();
-                        updatePortStatus(port, 'failed');
-                        log(`Port ${port}: Another connection already established`, 'info');
-                    }
+                        }
+                    };
+                    
+                    ws.onerror = (error) => {
+                        log(`WebSocket error on port ${port}: ${error}`, 'error');
+                    };
                     
                     resolve(true);
                 };
@@ -669,19 +655,8 @@
                     clearTimeout(timeout);
                     updatePortStatus(port, 'failed');
                     log(`Port ${port}: Connection failed`, 'error');
-                    completedPorts++;
-                    updateScanProgress();
                     resolve(false);
                 };
-                
-                // Check if scanning was stopped
-                if (!scanning) {
-                    clearTimeout(timeout);
-                    ws.close();
-                    completedPorts++;
-                    updateScanProgress();
-                    resolve(false);
-                }
             });
         }
 
@@ -690,38 +665,34 @@
             
             scanning = true;
             scanIndex = 0;
-            completedPorts = 0;
             
             document.getElementById('scanBtn').disabled = true;
             document.getElementById('stopBtn').disabled = false;
             
             initializePortList();
             hideConnectionInfo();
-            updateStatus('Scanning ports in parallel...', 'scanning');
-            log('Starting parallel port scan...', 'info');
+            updateStatus('Scanning ports...', 'scanning');
+            log('Starting port scan...', 'info');
             
-            // Test all ports simultaneously
-            const portTests = ports.map(port => testPort(port));
-            
-            try {
-                const results = await Promise.all(portTests);
+            for (let i = 0; i < ports.length && scanning; i++) {
+                scanIndex = i;
+                const port = ports[i];
                 
-                // Find the first successful connection
-                const successfulPortIndex = results.findIndex(result => result);
-                
-                if (successfulPortIndex !== -1 && scanning) {
+                if (await testPort(port)) {
                     // Found a working port
-                    const workingPort = ports[successfulPortIndex];
-                    updateStatus(`Connected to port ${workingPort}`, 'connected');
-                    showConnectionInfo(workingPort);
-                    log(`✅ Successfully connected to Electron app on port ${workingPort}`, 'success');
-                } else if (scanning && !currentSocket) {
-                    updateStatus('No Electron app found', 'failed');
-                    log('❌ Scan completed. No Electron app found on any port.', 'error');
+                    updateStatus(`Connected to port ${port}`, 'connected');
+                    showConnectionInfo(port);
+                    log(`✅ Successfully connected to Electron app on port ${port}`, 'success');
+                    break;
                 }
-            } catch (error) {
-                log(`❌ Error during parallel scan: ${error.message}`, 'error');
-                updateStatus('Scan error', 'failed');
+                
+                // Small delay between attempts
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            if (scanning && !currentSocket) {
+                updateStatus('No Electron app found', 'failed');
+                log('❌ Scan completed. No Electron app found on any port.', 'error');
             }
             
             scanning = false;
@@ -733,17 +704,8 @@
             if (!scanning) return;
             
             scanning = false;
-            completedPorts = 0;
             updateStatus('Scan stopped', '');
             log('Scan stopped by user', 'info');
-            
-            // Reset all testing ports to pending status
-            ports.forEach(port => {
-                const portElement = document.getElementById(`port-${port}`);
-                if (portElement && portElement.classList.contains('testing')) {
-                    portElement.className = 'port-item pending';
-                }
-            });
             
             document.getElementById('scanBtn').disabled = false;
             document.getElementById('stopBtn').disabled = true;
@@ -916,13 +878,6 @@
             log(`Extension ID: ${extensionId}`, 'info');
             log(`Will test ports: ${ports.join(', ')}`, 'info');
         };
-
-        function updateScanProgress() {
-            if (scanning) {
-                const progress = Math.round((completedPorts / ports.length) * 100);
-                updateStatus(`Scanning ports in parallel... (${completedPorts}/${ports.length} - ${progress}%)`, 'scanning');
-            }
-        }
     </script>
 </body>
 </html>
