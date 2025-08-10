@@ -155,6 +155,12 @@
             color: #2f855a;
         }
 
+        .port-item.verified {
+            background: #9ae6b4;
+            color: #22543d;
+            animation: verified-pulse 2s infinite;
+        }
+
         .port-item.failed {
             background: #fed7d7;
             color: #c53030;
@@ -163,6 +169,17 @@
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.7; }
+        }
+
+        @keyframes verified-pulse {
+            0%, 100% { 
+                box-shadow: 0 0 0 0 rgba(34, 84, 61, 0.7);
+                transform: scale(1);
+            }
+            50% { 
+                box-shadow: 0 0 0 10px rgba(34, 84, 61, 0);
+                transform: scale(1.05);
+            }
         }
 
         .connection-info {
@@ -352,10 +369,11 @@
         <h1>🔌 WebSocket Extension Simulator</h1>
         
         <div class="controls">
-            <button id="scanBtn" onclick="startScan()">Start Scan</button>
-            <button id="stopBtn" onclick="stopScan()" disabled>Stop Scan</button>
-            <button id="clearBtn" onclick="clearLog()">Clear Log</button>
-            <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+                    <button id="scanBtn" onclick="startScan()">Start Scan</button>
+        <button id="stopBtn" onclick="stopScan()" disabled>Stop Scan</button>
+        <button id="clearBtn" onclick="clearLog()">Clear Log</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+        <button id="verifyBtn" onclick="requestServerIdentification()" disabled>Verify Server</button>
         </div>
 
         <div id="status" class="status">Ready to scan</div>
@@ -623,6 +641,19 @@
                                 log(`Message confirmed: ${data.message}`, 'success');
                             } else if (data.type === 'connection') {
                                 log(`Connection message: ${data.message}`, 'info');
+                            } else if (data.type === 'server-identification') {
+                                log(`Server identified: ${data.serverName} v${data.serverVersion} (ID: ${data.serverId})`, 'success');
+                                log(`Connected to correct server on port ${data.port}`, 'success');
+                                
+                                // Verify this is the correct server
+                                if (data.serverName === 'Orbit Extension Manager' && data.serverId.startsWith('orbit-extension-manager-')) {
+                                    log(`✅ Server verification successful!`, 'success');
+                                    updatePortStatus(port, 'verified');
+                                } else {
+                                    log(`⚠️ Server verification failed - unexpected server`, 'error');
+                                    updatePortStatus(port, 'failed');
+                                    ws.close();
+                                }
                             }
                         } catch (error) {
                             stats.messagesReceived++;
@@ -631,6 +662,16 @@
                             addMessageToHistory('received', event.data);
                         }
                     };
+                    
+                    // Request server identification after a short delay
+                    setTimeout(() => {
+                        if (ws.readyState === WebSocket.OPEN) {
+                            log('Requesting server identification...', 'info');
+                            ws.send(JSON.stringify({
+                                type: 'request-server-identification'
+                            }));
+                        }
+                    }, 1000);
                     
                     ws.onclose = () => {
                         log(`Connection to port ${port} closed`, 'info');
@@ -725,26 +766,48 @@
             }
         }
 
+        function requestServerIdentification() {
+            if (!currentSocket) {
+                log('❌ No active connection', 'error');
+                return;
+            }
+
+            try {
+                const messageData = {
+                    type: 'request-server-identification'
+                };
+                
+                currentSocket.send(JSON.stringify(messageData));
+                log('Requested server identification', 'info');
+            } catch (error) {
+                log(`❌ Failed to request server identification: ${error.message}`, 'error');
+            }
+        }
+
         function showConnectionInfo(port) {
             const info = document.getElementById('connectionInfo');
             const portSpan = document.getElementById('connectedPort');
             const messageTest = document.getElementById('messageTest');
             const disconnectBtn = document.getElementById('disconnectBtn');
+            const verifyBtn = document.getElementById('verifyBtn');
             
             portSpan.textContent = port;
             info.classList.add('show');
             messageTest.classList.add('show');
             disconnectBtn.disabled = false;
+            verifyBtn.disabled = false;
         }
 
         function hideConnectionInfo() {
             const info = document.getElementById('connectionInfo');
             const messageTest = document.getElementById('messageTest');
             const disconnectBtn = document.getElementById('disconnectBtn');
+            const verifyBtn = document.getElementById('verifyBtn');
             
             info.classList.remove('show');
             messageTest.classList.remove('show');
             disconnectBtn.disabled = true;
+            verifyBtn.disabled = true;
         }
 
         function sendTextMessage() {
